@@ -220,8 +220,17 @@ function unlockAudio() {
 }
 
 // ── Load locations & build config cards ──────────────────────
-const locData = await fetch('./data/locations.json').then(r => r.json());
-locations = locData;
+const FALLBACK_LOCATIONS = [
+  { id:'location_001', name:'Test Area - Rhythm Game', lat:34.0522, lng:-118.2437, radius:500, content:'rhythm', content_id:'highway_001' },
+  { id:'location_002', name:'Test Area - Quiz',        lat:34.0195, lng:-118.4912, radius:300, content:'quiz-b', content_id:'santamonica_001' },
+];
+try {
+  const locData = await fetch('./data/locations.json').then(r => r.json());
+  locations = locData;
+} catch (e) {
+  console.warn('[LBE] locations.json 読み込み失敗 → フォールバック:', e.message);
+  locations = FALLBACK_LOCATIONS;
+}
 
 const CONTENT_LABELS = { 'rhythm': 'RHYTHM GAME', 'quiz-b': 'QUIZ B', 'quiz-a': 'QUIZ A' };
 for (const loc of locations) {

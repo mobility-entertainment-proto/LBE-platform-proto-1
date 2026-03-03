@@ -68,23 +68,39 @@ export class AudioManager {
     return new Promise(resolve => {
       if (!this.speechSynth) { resolve(); return; }
 
-      // speaking 中のみ cancel（不要な cancel は Chrome bug の引き金になる）
+      // 再生中なら停止してから開始
       if (this.speechSynth.speaking || this.speechSynth.pending) {
         this.speechSynth.cancel();
       }
+      // paused 状態の場合は resume（Chromium bug 対策）
+      if (this.speechSynth.paused) this.speechSynth.resume();
 
       const utt = new SpeechSynthesisUtterance(text);
       utt.lang = options.lang || 'ja-JP';
       utt.rate = options.rate || 0.9;
       utt.pitch = options.pitch || 1.0;
 
-      // タイムアウトフォールバック:
-      // onend が発火しない(Chrome bug / 音声未インストール)場合でも必ず進む
-      // 文字数 × 150ms + 1.5秒（最大5秒）
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(maxTimer);
+        clearTimeout(startCheck);
+        resolve();
+      };
+
+      // 【最大タイムアウト】onend が発火しない Chrome bug 対策
       const maxMs = Math.min(5000, Math.max(3000, text.length * 150 + 1500));
-      const timer = setTimeout(() => resolve(), maxMs);
-      utt.onend  = () => { clearTimeout(timer); resolve(); };
-      utt.onerror = () => { clearTimeout(timer); resolve(); };
+      const maxTimer = setTimeout(finish, maxMs);
+
+      // 【起動確認】speak() 後 300ms で speaking=false なら音声エンジンが
+      // 起動しなかった（日本語音声未インストール等）→ 即解決
+      const startCheck = setTimeout(() => {
+        if (!this.speechSynth.speaking && !this.speechSynth.pending) finish();
+      }, 300);
+
+      utt.onend  = finish;
+      utt.onerror = finish;
 
       this.speechSynth.speak(utt);
     });

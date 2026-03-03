@@ -67,13 +67,25 @@ export class AudioManager {
   speak(text, options = {}) {
     return new Promise(resolve => {
       if (!this.speechSynth) { resolve(); return; }
-      this.speechSynth.cancel();
+
+      // speaking 中のみ cancel（不要な cancel は Chrome bug の引き金になる）
+      if (this.speechSynth.speaking || this.speechSynth.pending) {
+        this.speechSynth.cancel();
+      }
+
       const utt = new SpeechSynthesisUtterance(text);
       utt.lang = options.lang || 'ja-JP';
       utt.rate = options.rate || 0.9;
       utt.pitch = options.pitch || 1.0;
-      utt.onend = resolve;
-      utt.onerror = resolve;
+
+      // タイムアウトフォールバック:
+      // onend が発火しない(Chrome bug / 音声未インストール)場合でも必ず進む
+      // 文字数 × 150ms + 1.5秒（最大5秒）
+      const maxMs = Math.min(5000, Math.max(3000, text.length * 150 + 1500));
+      const timer = setTimeout(() => resolve(), maxMs);
+      utt.onend  = () => { clearTimeout(timer); resolve(); };
+      utt.onerror = () => { clearTimeout(timer); resolve(); };
+
       this.speechSynth.speak(utt);
     });
   }

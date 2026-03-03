@@ -24,6 +24,7 @@ export class QuizB {
     this._result = null;   // 'correct'|'wrong'|'miss'
     this._explanation = '';
     this._state = 'IDLE';  // IDLE|READING|FLOWING|RESULT
+    this._skipReading = false;
     this._startTime = 0;
     this._flash = [0,0,0,0];
     this._jfx = [];
@@ -105,14 +106,20 @@ export class QuizB {
     this._explanation = this._question.explanation;
     this._flash = [0,0,0,0];
     this._jfx = [];
+    this._skipReading = false;
     this.audio?.unlock();
     this._state = 'READING';
 
-    // TTS で問題文を読み上げ
-    await this.audio?.speak(this._question.question);
+    // TTS で問題文を読み上げ（_skipReading フラグで即スキップも可）
+    await Promise.race([
+      this.audio?.speak(this._question.question) ?? Promise.resolve(),
+      new Promise(r => {
+        const check = setInterval(() => { if (this._skipReading) { clearInterval(check); r(); } }, 50);
+      }),
+    ]);
 
     // 少し間を置いてから選択肢を流す
-    await new Promise(r => setTimeout(r, 800));
+    await new Promise(r => setTimeout(r, 500));
     this._spawnNotes();
     this._state = 'FLOWING';
     this._startTime = performance.now();
@@ -187,6 +194,12 @@ export class QuizB {
 
     if (this._state === 'IDLE') {
       this._startQuestion(); return;
+    }
+    if (this._state === 'READING') {
+      // 読み上げ中にタップで読み上げをスキップして選択肢へ進む
+      this._skipReading = true;
+      this.audio?.stopSpeech();
+      return;
     }
     if (this._state === 'RESULT') {
       for (const b of this._btnList) if(cx>=b.x&&cx<=b.x+b.w&&cy>=b.y&&cy<=b.y+b.h){ b.cb(); return; }
@@ -284,7 +297,7 @@ export class QuizB {
     const pulse = 0.6 + 0.4 * Math.sin(Date.now() / 400);
     c.fillStyle = `rgba(100,200,255,${pulse})`;
     c.font = `${this.H*.022|0}px monospace`;
-    c.fillText('♪ 読み上げ中...', this.cx, this.H*.78);
+    c.fillText('♪ 読み上げ中... (タップでスキップ)', this.cx, this.H*.78);
   }
 
   _drawFlowing(ts) {
